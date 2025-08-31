@@ -1,8 +1,7 @@
 const express = require('express');
-const qrcode = require("qrcode-terminal");
 const fs = require('fs');
 const pino = require('pino');
-const { makeWASocket, Browsers, useMultiFileAuthState, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
+const { makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys");
 const path = require('path');
 
 const app = express();
@@ -34,7 +33,7 @@ app.post('/pair', async (req, res) => {
     const XeonBotInc = makeWASocket({
       logger: pino({ level: 'silent' }),
       printQRInTerminal: false,
-      browser: Browsers.mozilla('NGX-BOT', 'desktop'),
+      browser: ["NGX-BOT", "Chrome", "1.0.0"], // Fixed browser configuration
       auth: {
         creds: state.creds,
         keys: state.keys,
