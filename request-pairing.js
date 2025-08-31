@@ -62,6 +62,11 @@ app.post('/pair', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Pairing server running on http://localhost:${PORT}`);
+// Health check endpoint for Render
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', message: 'NGX5 Bot Server is running' });
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Pairing server running on port ${PORT}`);
 });
