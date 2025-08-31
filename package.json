@@ -1,0 +1,22 @@
+{
+  "name": "ngx5-whatsapp-bot",
+  "version": "1.0.0",
+  "description": "NGX5 WhatsApp Bot with pairing code system",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "pair": "node request-pairing.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.4.0",
+    "pino": "^8.15.0"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "baileys",
+    "ngx5"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
