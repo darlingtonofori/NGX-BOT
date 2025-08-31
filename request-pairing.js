@@ -1,17 +1,67 @@
-// request-pairing.js
-const { requestPairingCode } = require("./index");
+// pairing-server.js
+const express = require('express');
+const { makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys");
+const fs = require('fs');
+const path = require('path');
 
-const phoneNumber = process.argv[2];
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-if (!phoneNumber) {
-    console.log("Please provide a phone number with country code.");
-    console.log("Example: node request-pairing.js 916909137213");
-    process.exit(1);
-}
+// Middleware
+app.use(express.json());
+app.use(express.static('public'));
+app.use(express.urlencoded({ extended: true }));
 
-requestPairingCode(phoneNumber).then(code => {
-    if (!code) {
-        console.log("Failed to get pairing code. Please try again.");
-        process.exit(1);
+// Store active pairing sessions
+const pairingSessions = new Map();
+
+// Routes
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.post('/pair', async (req, res) => {
+  try {
+    const { number } = req.body;
+    
+    if (!number) {
+      return res.status(400).json({ error: 'Phone number is required' });
     }
+
+    // Create a new WhatsApp socket
+    const { state, saveCreds } = await useMultiFileAuthState('./data/sessions');
+    const sock = makeWASocket({
+      auth: state,
+      printQRInTerminal: false
+    });
+
+    // Store the socket for later use
+    pairingSessions.set(number, { sock, saveCreds });
+
+    // Request pairing code
+    const pairingCode = await sock.requestPairingCode(number.replace(/\D/g, ''));
+    
+    // Listen for connection events
+    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('connection.update', (update) => {
+      if (update.connection === 'open') {
+        // Send welcome message when connected
+        sock.sendMessage(sock.user.id, { 
+          text: '🤖 *NGX5 Bot Connected Successfully!*\n\nType `.arise` to see all available commands.' 
+        });
+        
+        // Clean up
+        pairingSessions.delete(number);
+      }
+    });
+
+    res.json({ success: true, pairingCode });
+  } catch (error) {
+    console.error('Pairing error:', error);
+    res.status(500).json({ error: 'Failed to generate pairing code' });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Pairing server running on http://localhost:${PORT}`);
 });
