@@ -7,7 +7,8 @@
     "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "docker:build": "docker build -t knightbot .",
-    "docker:run": "docker run -e SESSION_ID=$SESSION_ID knightbot"
+    "docker:run": "docker run -e SESSION_ID=$SESSION_ID knightbot",
+    "fix-deps": "npm install --legacy-peer-deps"
   },
   "keywords": [
     "whatsapp-bot"
@@ -65,5 +66,8 @@
     "youtubedl-core": "^4.11.7",
     "yt-search": "^2.12.1",
     "ytdl-core": "^4.11.5"
+  },
+  "overrides": {
+    "jimp": "^0.16.13"
   }
 }
