@@ -1,9 +1,19 @@
 // index.js
 const { makeWASocket, useMultiFileAuthState, delay, DisconnectReason } = require("@whiskeysockets/baileys");
+const express = require("express");
 const pino = require("pino");
 const fs = require("fs");
 const path = require("path");
 const config = require("./config");
+
+// Create Express app for web pairing
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
+app.use(express.urlencoded({ extended: true }));
 
 // Import commands
 const commands = {};
@@ -115,8 +125,6 @@ async function requestPairingCode(phoneNumber) {
         
         console.log(`Requesting pairing code for: ${phoneNumber}`);
         pairingCode = await sock.requestPairingCode(phoneNumber);
-        console.log(`\n📱 Pairing Code: ${pairingCode}`);
-        console.log("\nEnter this code in your WhatsApp linked devices section to connect.");
         
         return pairingCode;
     } catch (error) {
@@ -125,9 +133,45 @@ async function requestPairingCode(phoneNumber) {
     }
 }
 
+// Web routes for pairing
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+app.post("/pair", async (req, res) => {
+    try {
+        const { number } = req.body;
+        
+        if (!number) {
+            return res.status(400).json({ error: "Phone number is required" });
+        }
+        
+        const code = await requestPairingCode(number);
+        
+        if (code) {
+            res.json({ success: true, pairingCode: code });
+        } else {
+            res.status(500).json({ error: "Failed to generate pairing code" });
+        }
+    } catch (error) {
+        console.error("Pairing error:", error);
+        res.status(500).json({ error: "Failed to generate pairing code: " + error.message });
+    }
+});
+
+// Health check endpoint for Render
+app.get("/health", (req, res) => {
+    res.json({ status: "OK", message: "NGX5 Bot is running" });
+});
+
 // Main function
 async function main() {
     console.log("🤖 Starting NGX5 WhatsApp Bot...\n");
+    
+    // Start the web server
+    app.listen(PORT, "0.0.0.0", () => {
+        console.log(`🌐 Web pairing panel available at http://localhost:${PORT}`);
+    });
     
     // Check if we already have a session
     const sessionExists = fs.existsSync("./data/sessions/creds.json");
@@ -137,10 +181,7 @@ async function main() {
         await initializeBot();
     } else {
         console.log("🆕 No existing session found.");
-        console.log("To connect, please request a pairing code:");
-        console.log("1. Run: node request-pairing.js <your_phone_number>");
-        console.log("2. Then go to WhatsApp → Linked Devices → Link a Device");
-        console.log("3. Enter the pairing code when prompted\n");
+        console.log(`Visit http://localhost:${PORT} to pair your device`);
         
         // Initialize bot anyway for pairing
         await initializeBot();
@@ -149,9 +190,3 @@ async function main() {
 
 // Run the bot
 main().catch(console.error);
-
-// Export for external use
-module.exports = {
-    requestPairingCode,
-    initializeBot
-};
