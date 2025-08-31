@@ -1,7 +1,7 @@
 {
-  "name": "ngx5-whatsapp-bot",
+  "name": "ngx-bot",
   "version": "1.0.0",
-  "description": "NGX5 WhatsApp Bot with web-based pairing",
+  "description": "NGX-BOT WhatsApp Bot with web-based pairing",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -10,6 +10,7 @@
   "dependencies": {
     "@whiskeysockets/baileys": "^6.4.0",
     "express": "^4.18.2",
-    "pino": "^8.15.0"
+    "pino": "^8.15.0",
+    "qrcode-terminal": "^0.12.0"
   }
 }
