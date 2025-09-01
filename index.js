@@ -82,7 +82,7 @@ app.post('/api/request-pairing', async (req, res) => {
             return res.json({ success: false, error: 'Phone number required' });
         }
 
-        // Clean and validate number
+        // Clean the number
         const cleanNumber = number.replace(/[^0-9]/g, '');
         
         // Basic validation
