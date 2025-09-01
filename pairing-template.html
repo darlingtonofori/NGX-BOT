@@ -1,121 +1,303 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NGX5 Bot - Pairing</title>
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            margin: 0; 
-            padding: 20px; 
             min-height: 100vh;
+            padding: 20px;
             display: flex;
             justify-content: center;
             align-items: center;
         }
-        .container { 
-            background: white; 
-            padding: 30px; 
-            border-radius: 15px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
             text-align: center;
             max-width: 500px;
             width: 100%;
         }
-        h1 { 
-            color: #333; 
+
+        .logo {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+        }
+
+        h1 {
+            color: #2c3e50;
             margin-bottom: 20px;
+            font-size: 1.8em;
         }
-        .input-group {
-            margin-bottom: 20px;
-        }
-        input[type="tel"] {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 16px;
-            box-sizing: border-box;
-        }
-        button {
-            background: #4CAF50;
+
+        .channel-section {
+            background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
             color: white;
-            border: none;
-            padding: 12px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 10px;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 25px;
         }
-        button:hover {
-            background: #45a049;
+
+        .channel-section h2 {
+            margin-bottom: 15px;
+            font-size: 1.3em;
         }
-        .code-display { 
-            font-size: 2.5em; 
-            font-weight: bold; 
-            color: #4CAF50; 
-            margin: 20px 0;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border: 2px dashed #4CAF50;
+
+        .join-btn {
+            display: inline-block;
+            background: white;
+            color: #25D366;
+            padding: 12px 25px;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: bold;
+            margin: 10px 0;
+            transition: transform 0.2s;
+        }
+
+        .join-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .pairing-section {
             display: none;
         }
-        .instructions { 
-            background: #e7f3ff; 
-            padding: 15px; 
-            border-radius: 8px; 
-            margin: 20px 0; 
+
+        .input-group {
+            margin-bottom: 20px;
             text-align: left;
         }
-        #qrcode { 
-            margin: 20px auto; 
-            padding: 10px;
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+
+        input[type="tel"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="tel"]:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            width: 100%;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .code-display {
+            font-size: 2.2em;
+            font-weight: bold;
+            color: #27ae60;
+            margin: 25px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border: 3px dashed #27ae60;
+            display: none;
+        }
+
+        .instructions {
+            background: #e8f4fd;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .instructions h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .instructions ol {
+            padding-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 10px;
+            color: #34495e;
+        }
+
+        #qrcode {
+            margin: 20px auto;
+            padding: 15px;
             background: white;
             border-radius: 10px;
             display: inline-block;
         }
-        .status { 
-            margin-top: 20px; 
-            padding: 10px; 
-            border-radius: 5px; 
+
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: 500;
         }
-        .connected { background: #d4edda; color: #155724; }
+
         .waiting { background: #fff3cd; color: #856404; }
+        .processing { background: #d1ecf1; color: #0c5460; }
+        .success { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
+
+        .step-indicator {
+            display: flex;
+            justify-content: space-between;
+            margin: 25px 0;
+            position: relative;
+        }
+
+        .step {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            position: relative;
+            z-index: 2;
+        }
+
+        .step.active {
+            background: #667eea;
+        }
+
+        .step.completed {
+            background: #27ae60;
+        }
+
+        .step-line {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #ddd;
+            transform: translateY(-50%);
+            z-index: 1;
+        }
+
+        .step-text {
+            position: absolute;
+            top: 35px;
+            font-size: 12px;
+            color: #7f8c8d;
+            width: 80px;
+            left: -25px;
+            text-align: center;
+        }
+
+        .footer {
+            margin-top: 25px;
+            color: #7f8c8d;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🤖 NGX5 Bot Pairing</h1>
-        
-        <div id="status" class="status waiting">
-            Enter your WhatsApp number and request a pairing code.
+        <div class="logo">🤖</div>
+        <h1>NGX5 Bot Pairing</h1>
+
+        <!-- Step 1: Join Channel -->
+        <div id="channelSection" class="channel-section">
+            <h2>📢 Join Our WhatsApp Channel</h2>
+            <p>Join our channel to get updates and support before pairing your bot</p>
+            <a href="https://whatsapp.com/channel/0029Vb6q63mIiRopgqv4EQ18" class="join-btn" target="_blank">
+                Join Channel
+            </a>
+            <p style="margin-top: 15px; font-size: 14px;">After joining, click below to continue</p>
+            <button onclick="showPairingSection()">I've Joined the Channel →</button>
         </div>
-        
-        <div class="input-group">
-            <input type="tel" id="phoneNumber" placeholder="Enter your WhatsApp number (e.g., 233534332654)" required>
-            <button onclick="requestPairingCode()">Request Pairing Code</button>
+
+        <!-- Step 2: Pairing Section -->
+        <div id="pairingSection" class="pairing-section">
+            <div class="step-indicator">
+                <div class="step-line"></div>
+                <div class="step completed">1</div>
+                <div class="step active">2</div>
+                <div class="step">3</div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin: 10px 0 25px 0;">
+                <span class="step-text">Join Channel</span>
+                <span class="step-text" style="left: 110px;">Enter Number</span>
+                <span class="step-text" style="left: 220px;">Get Code</span>
+            </div>
+
+            <div id="status" class="status waiting">
+                Enter your WhatsApp number to get pairing code
+            </div>
+            
+            <div class="input-group">
+                <label for="phoneNumber">WhatsApp Number:</label>
+                <input type="tel" id="phoneNumber" placeholder="Example: 233534332654 (without +)" required>
+            </div>
+            
+            <button id="requestBtn" onclick="requestPairingCode()">Request Pairing Code</button>
+            
+            <div id="codeDisplay" class="code-display">
+                <span id="pairingCode"></span>
+            </div>
+            
+            <div id="qrcode"></div>
+            
+            <div class="instructions">
+                <h3>📱 How to Use Pairing Code:</h3>
+                <ol>
+                    <li>Open WhatsApp on your phone</li>
+                    <li>Go to <strong>Settings → Linked Devices</strong></li>
+                    <li>Tap <strong>"Link a Device"</strong></li>
+                    <li>Enter the code shown above</li>
+                    <li>Wait for connection confirmation</li>
+                </ol>
+            </div>
         </div>
-        
-        <div id="codeDisplay" class="code-display">
-            <span id="pairingCode"></span>
-        </div>
-        
-        <div id="qrcode"></div>
-        
-        <div class="instructions">
-            <h3>📱 How to Pair:</h3>
-            <ol>
-                <li>Enter your WhatsApp number above (without + or spaces)</li>
-                <li>Click "Request Pairing Code"</li>
-                <li>Wait for the pairing code to appear</li>
-                <li>Open WhatsApp on your phone</li>
-                <li>Go to <strong>Settings → Linked Devices</strong></li>
-                <li>Tap <strong>"Link a Device"</strong></li>
-                <li>Enter the code shown above</li>
-                <li>Wait for connection confirmation</li>
-            </ol>
+
+        <div class="footer">
+            <p>© 2024 NGX5 Bot | By MR UNIQUE HACKER</p>
+            <p>Need help? Join our WhatsApp channel for support</p>
         </div>
     </div>
 
@@ -128,19 +310,33 @@
         const pairingCodeSpan = document.getElementById('pairingCode');
         const qrcodeDiv = document.getElementById('qrcode');
         const phoneInput = document.getElementById('phoneNumber');
+        const requestBtn = document.getElementById('requestBtn');
+        const channelSection = document.getElementById('channelSection');
+        const pairingSection = document.getElementById('pairingSection');
+
+        function showPairingSection() {
+            channelSection.style.display = 'none';
+            pairingSection.style.display = 'block';
+        }
 
         function requestPairingCode() {
-            const phoneNumber = phoneInput.value.trim().replace(/\D/g, ''); // Remove non-digits:cite[1]
+            const phoneNumber = phoneInput.value.trim().replace(/\D/g, '');
+            
             if (!phoneNumber) {
-                statusDiv.className = 'status error';
-                statusDiv.textContent = 'Please enter a valid phone number.';
+                showError('Please enter a valid phone number.');
                 return;
             }
 
-            statusDiv.className = 'status waiting';
+            if (phoneNumber.length < 8 || phoneNumber.length > 15) {
+                showError('Please enter a valid phone number (8-15 digits).');
+                return;
+            }
+
+            requestBtn.disabled = true;
+            requestBtn.textContent = 'Requesting Code...';
+            statusDiv.className = 'status processing';
             statusDiv.textContent = 'Requesting pairing code...';
 
-            // Send the phone number to the server
             fetch('/api/request-pairing', {
                 method: 'POST',
                 headers: {
@@ -151,30 +347,37 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    statusDiv.className = 'status connected';
-                    statusDiv.textContent = `Pairing code requested for ${phoneNumber}. Waiting for code...`;
-                    // The server will emit the code via Socket.io when ready
+                    statusDiv.className = 'status processing';
+                    statusDiv.textContent = 'Generating pairing code...';
                 } else {
-                    statusDiv.className = 'status error';
-                    statusDiv.textContent = 'Error: ' + data.error;
+                    showError('Error: ' + data.error);
+                    requestBtn.disabled = false;
+                    requestBtn.textContent = 'Request Pairing Code';
                 }
             })
             .catch(error => {
-                statusDiv.className = 'status error';
-                statusDiv.textContent = 'Failed to connect to server.';
-                console.error('Error:', error);
+                showError('Failed to connect to server. Please try again.');
+                requestBtn.disabled = false;
+                requestBtn.textContent = 'Request Pairing Code';
             });
         }
 
-        // Listen for the pairing code from the server
+        function showError(message) {
+            statusDiv.className = 'status error';
+            statusDiv.textContent = message;
+        }
+
+        function showSuccess(message) {
+            statusDiv.className = 'status success';
+            statusDiv.textContent = message;
+        }
+
         socket.on('new-pairing-code', (data) => {
-            statusDiv.className = 'status connected';
-            statusDiv.textContent = 'Pairing code generated!';
+            showSuccess('Pairing code generated!');
             
             codeDisplay.style.display = 'block';
             pairingCodeSpan.textContent = data.code;
             
-            // Generate QR code
             const pairingUrl = `whatsapp://pair?code=${data.code.replace(/-/g, '')}`;
             QRCode.toDataURL(pairingUrl, {
                 width: 200,
@@ -188,11 +391,28 @@
                 if (err) console.error(err);
                 qrcodeDiv.innerHTML = `<img src="${url}" alt="Pairing QR Code">`;
             });
+
+            requestBtn.disabled = false;
+            requestBtn.textContent = 'Request Pairing Code';
+            
+            // Update step indicator
+            document.querySelectorAll('.step')[2].classList.add('completed');
         });
 
-        // Optional: Validate input to allow only numbers
+        socket.on('pairing-error', (data) => {
+            showError('Error: ' + data.error);
+            requestBtn.disabled = false;
+            requestBtn.textContent = 'Request Pairing Code';
+        });
+
         phoneInput.addEventListener('input', function() {
-            this.value = this.value.replace(/\D/g, ''); // Remove non-digits:cite[1]
+            this.value = this.value.replace(/\D/g, '');
+        });
+
+        phoneInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                requestPairingCode();
+            }
         });
     </script>
 </body>
