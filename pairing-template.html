@@ -26,6 +26,30 @@
             color: #333; 
             margin-bottom: 20px;
         }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        input[type="tel"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #45a049;
+        }
         .code-display { 
             font-size: 2.5em; 
             font-weight: bold; 
@@ -35,6 +59,7 @@
             background: #f8f9fa;
             border-radius: 10px;
             border: 2px dashed #4CAF50;
+            display: none;
         }
         .instructions { 
             background: #e7f3ff; 
@@ -57,6 +82,7 @@
         }
         .connected { background: #d4edda; color: #155724; }
         .waiting { background: #fff3cd; color: #856404; }
+        .error { background: #f8d7da; color: #721c24; }
     </style>
 </head>
 <body>
@@ -64,10 +90,15 @@
         <h1>🤖 NGX5 Bot Pairing</h1>
         
         <div id="status" class="status waiting">
-            Waiting for pairing code...
+            Enter your WhatsApp number and request a pairing code.
         </div>
         
-        <div id="codeDisplay" class="code-display" style="display: none;">
+        <div class="input-group">
+            <input type="tel" id="phoneNumber" placeholder="Enter your WhatsApp number (e.g., 233534332654)" required>
+            <button onclick="requestPairingCode()">Request Pairing Code</button>
+        </div>
+        
+        <div id="codeDisplay" class="code-display">
             <span id="pairingCode"></span>
         </div>
         
@@ -76,6 +107,9 @@
         <div class="instructions">
             <h3>📱 How to Pair:</h3>
             <ol>
+                <li>Enter your WhatsApp number above (without + or spaces)</li>
+                <li>Click "Request Pairing Code"</li>
+                <li>Wait for the pairing code to appear</li>
                 <li>Open WhatsApp on your phone</li>
                 <li>Go to <strong>Settings → Linked Devices</strong></li>
                 <li>Tap <strong>"Link a Device"</strong></li>
@@ -93,7 +127,46 @@
         const codeDisplay = document.getElementById('codeDisplay');
         const pairingCodeSpan = document.getElementById('pairingCode');
         const qrcodeDiv = document.getElementById('qrcode');
+        const phoneInput = document.getElementById('phoneNumber');
 
+        function requestPairingCode() {
+            const phoneNumber = phoneInput.value.trim().replace(/\D/g, ''); // Remove non-digits:cite[1]
+            if (!phoneNumber) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = 'Please enter a valid phone number.';
+                return;
+            }
+
+            statusDiv.className = 'status waiting';
+            statusDiv.textContent = 'Requesting pairing code...';
+
+            // Send the phone number to the server
+            fetch('/api/request-pairing', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ number: phoneNumber })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    statusDiv.className = 'status connected';
+                    statusDiv.textContent = `Pairing code requested for ${phoneNumber}. Waiting for code...`;
+                    // The server will emit the code via Socket.io when ready
+                } else {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = 'Error: ' + data.error;
+                }
+            })
+            .catch(error => {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = 'Failed to connect to server.';
+                console.error('Error:', error);
+            });
+        }
+
+        // Listen for the pairing code from the server
         socket.on('new-pairing-code', (data) => {
             statusDiv.className = 'status connected';
             statusDiv.textContent = 'Pairing code generated!';
@@ -117,12 +190,10 @@
             });
         });
 
-        // Check if we have a code in URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
-        if (code) {
-            socket.emit('new-pairing-code', { code });
-        }
+        // Optional: Validate input to allow only numbers
+        phoneInput.addEventListener('input', function() {
+            this.value = this.value.replace(/\D/g, ''); // Remove non-digits:cite[1]
+        });
     </script>
 </body>
 </html>
