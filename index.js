@@ -100,7 +100,7 @@ const store = {
 store.readFromFile(STORE_FILE)
 setInterval(() => store.writeToFile(STORE_FILE), 10_000)
 
-let phoneNumber = "911234567890"
+let phoneNumber = "233534332654"
 let owner = JSON.parse(fs.readFileSync('./data/owner.json'))
 
 global.botname = "NGX5 BOT"
