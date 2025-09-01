@@ -1,0 +1,32 @@
+// commands/owner.js
+module.exports = {
+    name: 'owner',
+    alias: ['creator', 'dev', 'developer'],
+    desc: 'Contact the bot owner',
+    category: 'General',
+    
+    async client(vorterx, m, { connect }) {
+        await connect('👑');
+        
+        const ownerInfo = `
+👑 *BOT OWNER INFORMATION* 👑
+
+🤖 *Bot Name:* NGX5 BOT
+👤 *Owner:* MR UNIQUE HACKER
+📞 *WhatsApp:* +233534332654
+🌐 *Contact Link:* https://wa.me/+233534332654
+
+💡 *For any issues, suggestions, or collaboration:*
+• Contact via WhatsApp above
+• Please be patient for responses
+• Don't spam the owner
+
+⚡ *Bot developed with:* 
+• Baileys WhatsApp API
+• Node.js
+• JavaScript
+        `;
+        
+        await vorterx.sendMessage(m.from, { text: ownerInfo }, { quoted: m });
+    }
+};
