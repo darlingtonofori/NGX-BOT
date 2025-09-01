@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NGX5 Bot - Pairing</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0; 
+            padding: 20px; 
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 15px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 { 
+            color: #333; 
+            margin-bottom: 20px;
+        }
+        .code-display { 
+            font-size: 2.5em; 
+            font-weight: bold; 
+            color: #4CAF50; 
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border: 2px dashed #4CAF50;
+        }
+        .instructions { 
+            background: #e7f3ff; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin: 20px 0; 
+            text-align: left;
+        }
+        #qrcode { 
+            margin: 20px auto; 
+            padding: 10px;
+            background: white;
+            border-radius: 10px;
+            display: inline-block;
+        }
+        .status { 
+            margin-top: 20px; 
+            padding: 10px; 
+            border-radius: 5px; 
+        }
+        .connected { background: #d4edda; color: #155724; }
+        .waiting { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 NGX5 Bot Pairing</h1>
+        
+        <div id="status" class="status waiting">
+            Waiting for pairing code...
+        </div>
+        
+        <div id="codeDisplay" class="code-display" style="display: none;">
+            <span id="pairingCode"></span>
+        </div>
+        
+        <div id="qrcode"></div>
+        
+        <div class="instructions">
+            <h3>📱 How to Pair:</h3>
+            <ol>
+                <li>Open WhatsApp on your phone</li>
+                <li>Go to <strong>Settings → Linked Devices</strong></li>
+                <li>Tap <strong>"Link a Device"</strong></li>
+                <li>Enter the code shown above</li>
+                <li>Wait for connection confirmation</li>
+            </ol>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const statusDiv = document.getElementById('status');
+        const codeDisplay = document.getElementById('codeDisplay');
+        const pairingCodeSpan = document.getElementById('pairingCode');
+        const qrcodeDiv = document.getElementById('qrcode');
+
+        socket.on('new-pairing-code', (data) => {
+            statusDiv.className = 'status connected';
+            statusDiv.textContent = 'Pairing code generated!';
+            
+            codeDisplay.style.display = 'block';
+            pairingCodeSpan.textContent = data.code;
+            
+            // Generate QR code
+            const pairingUrl = `whatsapp://pair?code=${data.code}`;
+            QRCode.toDataURL(pairingUrl, {
+                width: 200,
+                height: 200,
+                margin: 1,
+                color: {
+                    dark: '#000000',
+                    light: '#FFFFFF'
+                }
+            }, (err, url) => {
+                if (err) console.error(err);
+                qrcodeDiv.innerHTML = `<img src="${url}" alt="Pairing QR Code">`;
+            });
+        });
+
+        // Check if we have a code in URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        if (code) {
+            socket.emit('new-pairing-code', { code });
+        }
+    </script>
+</body>
+</html>
