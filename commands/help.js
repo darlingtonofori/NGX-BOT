@@ -8,7 +8,7 @@ async function helpCommand(sock, chatId, message) {
    *🤖 ${settings.botName || 'NGX5-BOT'}*  
    Version: *${settings.version || '1.0'}*
    by ${settings.botOwner || 'LEBRONDOB SNR(TR4N5P4R3NT)'}
-   WA :${global.whatsappchat || 'https://wa.me/+233534332654'
+   WA :${global.whatsappchat || 'https://wa.me/+233534332654'}
 ╚═══════════════════╝
 
 *Available Commands:*
