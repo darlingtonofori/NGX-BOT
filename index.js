@@ -45,6 +45,52 @@ const { PHONENUMBER_MCC } = require('@whiskeysockets/baileys/lib/Utils/generics'
 const { rmSync, existsSync } = require('fs')
 const { join } = require('path')
 
+// Web server for pairing page
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const QRCode = require('qrcode');
+
+// Initialize web server
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
+
+app.use(express.static('public'));
+app.use(express.json());
+
+// Store pairing codes
+const activePairingCodes = new Map();
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'pairing.html'));
+});
+
+app.get('/api/pairing-code', (req, res) => {
+    const code = req.query.code;
+    if (code) {
+        activePairingCodes.set(code, { timestamp: Date.now() });
+        io.emit('new-pairing-code', { code });
+        res.json({ success: true, code });
+    } else {
+        res.json({ success: false, error: 'No code provided' });
+    }
+});
+
+io.on('connection', (socket) => {
+    console.log('User connected to pairing page');
+    
+    socket.on('disconnect', () => {
+        console.log('User disconnected from pairing page');
+    });
+});
+
+const WEB_PORT = process.env.WEB_PORT || 3000;
+server.listen(WEB_PORT, () => {
+    console.log(chalk.blue(`🌐 Pairing server running on port ${WEB_PORT}`));
+    console.log(chalk.blue(`📱 Open http://localhost:${WEB_PORT} to view pairing page`));
+});
+
 // Simple store with persistence
 const STORE_FILE = './baileys_store.json'
 const store = {
@@ -100,7 +146,7 @@ const store = {
 store.readFromFile(STORE_FILE)
 setInterval(() => store.writeToFile(STORE_FILE), 10_000)
 
-let phoneNumber = "233534332654"
+let phoneNumber = process.env.PHONE_NUMBER || "233534332654"
 let owner = JSON.parse(fs.readFileSync('./data/owner.json'))
 
 global.botname = "NGX5 BOT"
@@ -230,12 +276,7 @@ async function startNGX5Bot() {
     if (pairingCode && !NGX5.authState.creds.registered) {
         if (useMobile) throw new Error('Cannot use pairing code with mobile api')
 
-        let phoneNumber
-        if (!!global.phoneNumber) {
-            phoneNumber = global.phoneNumber
-        } else {
-            phoneNumber = await question(chalk.bgBlack(chalk.greenBright(`Please type your WhatsApp number 😍\nFormat: 6281376552730 (without + or spaces) : `)))
-        }
+        let phoneNumber = process.env.PHONE_NUMBER || "233534332654";
 
         // Clean the phone number - remove any non-digit characters
         phoneNumber = phoneNumber.replace(/[^0-9]/g, '')
@@ -251,13 +292,24 @@ async function startNGX5Bot() {
             try {
                 let code = await NGX5.requestPairingCode(phoneNumber)
                 code = code?.match(/.{1,4}/g)?.join("-") || code
-                console.log(chalk.black(chalk.bgGreen(`Your Pairing Code : `)), chalk.black(chalk.white(code)))
-                console.log(chalk.yellow(`\nPlease enter this code in your WhatsApp app:\n1. Open WhatsApp\n2. Go to Settings > Linked Devices\n3. Tap "Link a Device"\n4. Enter the code shown above`))
+                
+                // Send to web interface
+                try {
+                    await axios.get(`http://localhost:${WEB_PORT}/api/pairing-code?code=${code}`);
+                    console.log(chalk.green('✅ Pairing code sent to web interface'));
+                    console.log(chalk.blue(`🌐 Open http://localhost:${WEB_PORT} to view pairing page`));
+                } catch (webError) {
+                    console.log(chalk.yellow('⚠️ Web server not available, showing in logs:'));
+                    console.log(chalk.black(chalk.bgGreen(`Your Pairing Code : `)), chalk.black(chalk.white(code)));
+                }
+                
+                console.log(chalk.yellow(`\nPlease enter this code in your WhatsApp app:\n1. Open WhatsApp\n2. Go to Settings > Linked Devices\n3. Tap "Link a Device"\n4. Enter the code shown above`));
+                
             } catch (error) {
-                console.error('Error requesting pairing code:', error)
-                console.log(chalk.red('Failed to get pairing code. Please check your phone number and try again.'))
+                console.error('Error requesting pairing code:', error);
+                console.log(chalk.red('Failed to get pairing code. Please check your phone number and try again.'));
             }
-        }, 3000)
+        }, 3000);
     }
 
     // Connection handling
