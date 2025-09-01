@@ -59,8 +59,9 @@ const io = socketIo(server);
 app.use(express.static('public'));
 app.use(express.json());
 
-// Store pairing codes
+// Store pairing codes and user numbers
 const activePairingCodes = new Map();
+const userNumbers = new Map();
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'pairing.html'));
@@ -68,27 +69,61 @@ app.get('/', (req, res) => {
 
 app.get('/api/pairing-code', (req, res) => {
     const code = req.query.code;
-    if (code) {
-        activePairingCodes.set(code, { timestamp: Date.now() });
-        io.emit('new-pairing-code', { code });
-        res.json({ success: true, code });
+    const number = req.query.number;
+    if (code && number) {
+        activePairingCodes.set(code, { 
+            timestamp: Date.now(),
+            number: number 
+        });
+        userNumbers.set(number, code);
+        io.emit('new-pairing-code', { code, number });
+        res.json({ success: true, code, number });
     } else {
-        res.json({ success: false, error: 'No code provided' });
+        res.json({ success: false, error: 'No code or number provided' });
+    }
+});
+
+app.post('/api/request-pairing', async (req, res) => {
+    try {
+        const { number } = req.body;
+        if (!number) {
+            return res.json({ success: false, error: 'Phone number required' });
+        }
+
+        // Clean and validate number
+        const cleanNumber = number.replace(/[^0-9]/g, '');
+        const pn = require('awesome-phonenumber');
+        if (!pn('+' + cleanNumber).isValid()) {
+            return res.json({ success: false, error: 'Invalid phone number format' });
+        }
+
+        // Store the number for later use
+        userNumbers.set(cleanNumber, 'pending');
+        io.emit('number-submitted', { number: cleanNumber, status: 'pending' });
+        
+        res.json({ success: true, message: 'Number received, pairing will start soon', number: cleanNumber });
+    } catch (error) {
+        res.json({ success: false, error: error.message });
     }
 });
 
 io.on('connection', (socket) => {
     console.log('User connected to pairing page');
     
+    socket.on('request-pairing', (data) => {
+        console.log('Pairing requested for:', data.number);
+        io.emit('pairing-requested', { number: data.number });
+    });
+    
     socket.on('disconnect', () => {
         console.log('User disconnected from pairing page');
     });
 });
 
-const WEB_PORT = process.env.WEB_PORT || 3000;
+const WEB_PORT = process.env.PORT || 3000;
 server.listen(WEB_PORT, () => {
     console.log(chalk.blue(`🌐 Pairing server running on port ${WEB_PORT}`));
-    console.log(chalk.blue(`📱 Open http://localhost:${WEB_PORT} to view pairing page`));
+    console.log(chalk.blue(`📱 Open your Render URL to view pairing page`));
 });
 
 // Simple store with persistence
@@ -146,14 +181,16 @@ const store = {
 store.readFromFile(STORE_FILE)
 setInterval(() => store.writeToFile(STORE_FILE), 10_000)
 
-let phoneNumber = process.env.PHONE_NUMBER || "233534332654"
+// REMOVED the fixed phone number - users will input their own
+let phoneNumber = process.env.PHONE_NUMBER || null;
 let owner = JSON.parse(fs.readFileSync('./data/owner.json'))
 
 global.botname = "NGX5 BOT"
 global.themeemoji = "•"
 
 const settings = require('./settings')
-const pairingCode = !!phoneNumber || process.argv.includes("--pairing-code")
+// Enable pairing code mode by default for web interface
+const pairingCode = process.argv.includes("--pairing-code") || true;
 const useMobile = process.argv.includes("--mobile")
 
 // Only create readline interface if we're in an interactive environment
@@ -162,8 +199,8 @@ const question = (text) => {
     if (rl) {
         return new Promise((resolve) => rl.question(text, resolve))
     } else {
-        // In non-interactive environment, use ownerNumber from settings
-        return Promise.resolve(settings.ownerNumber || phoneNumber)
+        // In non-interactive environment, return null to use web interface
+        return Promise.resolve(null);
     }
 }
 
@@ -272,44 +309,53 @@ async function startNGX5Bot() {
 
     NGX5.serializeM = (m) => smsg(NGX5, m, store)
 
-    // Handle pairing code
+    // Handle pairing code via web interface
     if (pairingCode && !NGX5.authState.creds.registered) {
         if (useMobile) throw new Error('Cannot use pairing code with mobile api')
 
-        let phoneNumber = process.env.PHONE_NUMBER || "233534332654";
+        console.log(chalk.green('🤖 Pairing mode enabled'));
+        console.log(chalk.blue('📱 Users can input their numbers on the web interface'));
 
-        // Clean the phone number - remove any non-digit characters
-        phoneNumber = phoneNumber.replace(/[^0-9]/g, '')
+        // Check for pending pairing requests every 5 seconds
+        setInterval(async () => {
+            for (const [number, status] of userNumbers.entries()) {
+                if (status === 'pending') {
+                    try {
+                        console.log(chalk.yellow(`🔄 Processing pairing request for: ${number}`));
+                        
+                        // Clean the phone number
+                        const cleanNumber = number.replace(/[^0-9]/g, '');
 
-        // Validate the phone number using awesome-phonenumber
-        const pn = require('awesome-phonenumber');
-        if (!pn('+' + phoneNumber).isValid()) {
-            console.log(chalk.red('Invalid phone number. Please enter your full international number (e.g., 15551234567 for US, 447911123456 for UK, etc.) without + or spaces.'));
-            process.exit(1);
-        }
+                        // Validate the phone number
+                        const pn = require('awesome-phonenumber');
+                        if (!pn('+' + cleanNumber).isValid()) {
+                            console.log(chalk.red(`❌ Invalid number: ${cleanNumber}`));
+                            userNumbers.set(number, 'invalid');
+                            continue;
+                        }
 
-        setTimeout(async () => {
-            try {
-                let code = await NGX5.requestPairingCode(phoneNumber)
-                code = code?.match(/.{1,4}/g)?.join("-") || code
-                
-                // Send to web interface
-                try {
-                    await axios.get(`http://localhost:${WEB_PORT}/api/pairing-code?code=${code}`);
-                    console.log(chalk.green('✅ Pairing code sent to web interface'));
-                    console.log(chalk.blue(`🌐 Open http://localhost:${WEB_PORT} to view pairing page`));
-                } catch (webError) {
-                    console.log(chalk.yellow('⚠️ Web server not available, showing in logs:'));
-                    console.log(chalk.black(chalk.bgGreen(`Your Pairing Code : `)), chalk.black(chalk.white(code)));
+                        let code = await NGX5.requestPairingCode(cleanNumber);
+                        code = code?.match(/.{1,4}/g)?.join("-") || code;
+                        
+                        // Send to web interface
+                        try {
+                            const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${WEB_PORT}`;
+                            await axios.get(`${RENDER_URL}/api/pairing-code?code=${code}&number=${cleanNumber}`);
+                            console.log(chalk.green(`✅ Pairing code sent for: ${cleanNumber}`));
+                            userNumbers.set(number, 'sent');
+                        } catch (webError) {
+                            console.log(chalk.yellow(`⚠️ Web server error, showing in logs for: ${cleanNumber}`));
+                            console.log(chalk.black(chalk.bgGreen(`Pairing Code for ${cleanNumber}: `)), chalk.black(chalk.white(code)));
+                            userNumbers.set(number, 'sent');
+                        }
+                        
+                    } catch (error) {
+                        console.error(chalk.red(`Error requesting pairing code for ${number}:`), error);
+                        userNumbers.set(number, 'error');
+                    }
                 }
-                
-                console.log(chalk.yellow(`\nPlease enter this code in your WhatsApp app:\n1. Open WhatsApp\n2. Go to Settings > Linked Devices\n3. Tap "Link a Device"\n4. Enter the code shown above`));
-                
-            } catch (error) {
-                console.error('Error requesting pairing code:', error);
-                console.log(chalk.red('Failed to get pairing code. Please check your phone number and try again.'));
             }
-        }, 3000);
+        }, 5000);
     }
 
     // Connection handling
@@ -321,8 +367,7 @@ async function startNGX5Bot() {
 
             const botNumber = NGX5.user.id.split(':')[0] + '@s.whatsapp.net';
             await NGX5.sendMessage(botNumber, {
-                text: `🤖 NGX5-BOT.Inc Connected Successfully!\n\n⏰ Time: ${new Date().toLocaleString()}\n✅ Status: Online and Ready!
-                \n✅Make sure to join below channel`,
+                text: `🤖 NGX5-BOT.Inc Connected Successfully!\n\n⏰ Time: ${new Date().toLocaleString()}\n✅ Status: Online and Ready!`,
                 contextInfo: {
                     forwardingScore: 1,
                     isForwarded: true,
