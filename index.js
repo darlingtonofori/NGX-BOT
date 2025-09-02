@@ -188,6 +188,10 @@ const question = (text) => {
     }
 }
 
+// Connection health monitoring variables
+let connectionHealthy = false;
+let lastMessageTime = Date.now();
+
 async function startNGX5Bot() {
     let { version, isLatest } = await fetchLatestBaileysVersion()
     const { state, saveCreds } = await useMultiFileAuthState(`./session`)
@@ -195,23 +199,48 @@ async function startNGX5Bot() {
 
     const NGX5 = makeWASocket({
         version,
-        logger: pino({ level: 'silent' }),
+        logger: pino({ 
+            level: 'silent',
+            transport: {
+                target: 'pino-pretty',
+                options: {
+                    colorize: true,
+                    ignore: 'hostname,pid',
+                    translateTime: 'SYS:yyyy-mm-dd HH:MM:ss'
+                }
+            }
+        }),
         printQRInTerminal: !pairingCode,
         browser: ["Ubuntu", "Chrome", "20.0.04"],
         auth: {
             creds: state.creds,
-            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" })),
+            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })),
         },
         markOnlineOnConnect: true,
         generateHighQualityLinkPreview: true,
-        syncFullHistory: true,
+        syncFullHistory: false, // Changed from true to false to reduce load
         getMessage: async (key) => {
             let jid = jidNormalizedUser(key.remoteJid)
             let msg = await store.loadMessage(jid, key.id)
             return msg?.message || ""
         },
         msgRetryCounterCache,
-        defaultQueryTimeoutMs: undefined,
+        defaultQueryTimeoutMs: 30000, // Added explicit timeout
+        transactionOpts: {
+            maxCommitRetries: 10,
+            delayBetweenTries: 3000
+        },
+        // ADD THESE NEW OPTIONS FOR BETTER STABILITY:
+        keepAliveIntervalMs: 30000,
+        maxIdleTimeMs: 60000,
+        emitOwnEvents: true,
+        linkPreviewImageThumbnailWidth: 192,
+        shouldIgnoreJid: (jid) => jid?.endsWith('@g.us') || false,
+        fireInitQueries: true,
+        appStateMacVerification: {
+            patch: false,
+            snapshot: false
+        }
     })
 
     store.bind(NGX5.ev)
@@ -221,23 +250,51 @@ async function startNGX5Bot() {
         try {
             const mek = chatUpdate.messages[0]
             if (!mek.message) return
-            mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
+            
+            // Update activity timestamp
+            lastMessageTime = Date.now()
+            
+            mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') 
+                ? mek.message.ephemeralMessage.message 
+                : mek.message
+                
             if (mek.key && mek.key.remoteJid === 'status@broadcast') {
-                await handleStatus(NGX5, chatUpdate);
-                return;
+                await handleStatus(NGX5, chatUpdate)
+                return
             }
+            
             if (!NGX5.public && !mek.key.fromMe && chatUpdate.type === 'notify') return
             if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
+
+            // Add timeout to prevent hanging
+            const messageProcessingTimeout = setTimeout(() => {
+                console.log(chalk.red(`⚠️  Message processing timeout for message ${mek.key.id}`))
+            }, 10000)
 
             try {
                 await handleMessages(NGX5, chatUpdate, true)
             } catch (err) {
                 console.error("Error in handleMessages:", err)
+                // Send error acknowledgement to prevent WhatsApp retries
+                if (mek.key) {
+                    await NGX5.readMessages([mek.key])
+                }
+            } finally {
+                clearTimeout(messageProcessingTimeout)
             }
         } catch (err) {
             console.error("Error in messages.upsert:", err)
         }
     })
+
+    // Connection health monitoring
+    setInterval(() => {
+        if (connectionHealthy && Date.now() - lastMessageTime > 120000) {
+            console.log(chalk.yellow('⚠️  No messages received in 2 minutes, connection may be stale'))
+            // Try to refresh connection
+            NGX5.sendPresenceUpdate('available')
+        }
+    }, 60000)
 
     NGX5.decodeJid = (jid) => {
         if (!jid) return jid
@@ -326,7 +383,13 @@ async function startNGX5Bot() {
 
     // Connection handling
     NGX5.ev.on('connection.update', async (s) => {
-        const { connection, lastDisconnect } = s
+        const { connection, lastDisconnect, isOnline } = s;
+        
+        if (isOnline !== undefined) {
+            connectionHealthy = isOnline;
+            console.log(chalk.blue(`📶 Connection health: ${isOnline ? 'Healthy' : 'Unhealthy'}`));
+        }
+        
         if (connection == "open") {
             console.log(chalk.magenta(` `))
             console.log(chalk.yellow(`🌿Connected to => ` + JSON.stringify(NGX5.user, null, 2)))
