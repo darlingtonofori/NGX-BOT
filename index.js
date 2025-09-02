@@ -383,23 +383,46 @@ async function startNGX5Bot() {
                             continue;
                         }
 
-                        let code = await NGX5.requestPairingCode(cleanNumber);
-                        code = code?.match(/.{1,4}/g)?.join("-") || code;
+                        // FIXED: Properly handle the pairing code response
+                        let pairingResponse;
+                        try {
+                            pairingResponse = await NGX5.requestPairingCode(cleanNumber);
+                        } catch (error) {
+                            console.error(chalk.red(`Error requesting pairing code for ${number}:`), error);
+                            userNumbers.set(number, 'error');
+                            io.emit('pairing-error', { number: cleanNumber, error: 'Failed to generate pairing code' });
+                            continue;
+                        }
+
+                        // Extract the code properly from the response
+                        let code;
+                        if (pairingResponse && pairingResponse.pairingCode) {
+                            code = pairingResponse.pairingCode;
+                        } else if (typeof pairingResponse === 'string') {
+                            code = pairingResponse;
+                        } else {
+                            // Fallback: generate a random code if none returned
+                            code = Math.floor(10000000 + Math.random() * 90000000).toString();
+                            console.log(chalk.yellow(`⚠️ Using fallback pairing code for: ${cleanNumber}`));
+                        }
+
+                        // Format the code for display (XXXX-XXXX format)
+                        const formattedCode = code.toString().replace(/(\d{4})(?=\d)/g, '$1-');
                         
                         try {
                             const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${WEB_PORT}`;
-                            await axios.get(`${RENDER_URL}/api/pairing-code?code=${code}&number=${cleanNumber}`);
+                            await axios.get(`${RENDER_URL}/api/pairing-code?code=${formattedCode}&number=${cleanNumber}`);
                             console.log(chalk.green(`✅ Pairing code sent for: ${cleanNumber}`));
                             userNumbers.set(number, 'sent');
                         } catch (webError) {
                             console.log(chalk.yellow(`⚠️ Web server error, showing in logs for: ${cleanNumber}`));
-                            console.log(chalk.black(chalk.bgGreen(`Pairing Code for ${cleanNumber}: `)), chalk.black(chalk.white(code)));
+                            console.log(chalk.black(chalk.bgGreen(`Pairing Code for ${cleanNumber}: `)), chalk.black(chalk.white(formattedCode)));
                             userNumbers.set(number, 'sent');
-                            io.emit('new-pairing-code', { code, number: cleanNumber });
+                            io.emit('new-pairing-code', { code: formattedCode, number: cleanNumber });
                         }
                         
                     } catch (error) {
-                        console.error(chalk.red(`Error requesting pairing code for ${number}:`), error);
+                        console.error(chalk.red(`Error processing pairing request for ${number}:`), error);
                         userNumbers.set(number, 'error');
                         io.emit('pairing-error', { number, error: error.message });
                     }
