@@ -1,17 +1,15 @@
 {
-  "name": "NGX5",
+  "name": "NGXY",
   "version": "1.0.0",
   "description": "WhatsApp Bot with Web Pairing Interface",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "pairing": "node pairing-server.js",
-    "dev": "concurrently \"npm run pairing\" \"npm start\"",
+    "dev": "NODE_ENV=development node index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "docker:build": "docker build -t knightbot .",
     "docker:run": "docker run -e SESSION_ID=$SESSION_ID -e PHONE_NUMBER=$PHONE_NUMBER -e WEB_PORT=$WEB_PORT knightbot",
-    "fix-deps": "npm install --legacy-peer-deps",
-    "build-public": "mkdir -p public && cp -n pairing-template.html public/pairing.html || echo 'Pairing template already exists'"
+    "fix-deps": "npm install --legacy-peer-deps"
   },
   "keywords": [
     "whatsapp-bot",
@@ -76,13 +74,13 @@
     "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
-    "concurrently": "^7.6.0"
+    "pino-pretty": "^10.0.0"
   },
   "overrides": {
     "jimp": "^0.16.13"
   },
   "engines": {
-    "node": ">=16.0.0",
+    "node": ">=18.0.0",
     "npm": ">=8.0.0"
   }
 }
