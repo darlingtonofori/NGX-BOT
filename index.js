@@ -234,9 +234,7 @@ async function startNGX5Bot() {
     // Fixed pino configuration for Render compatibility
     const NGX5 = makeWASocket({
         version,
-        logger: isProduction ? 
-            pino({ level: 'error' }) : 
-            pino({ level: 'silent' }),
+        logger: pino({ level: 'silent' }),
         printQRInTerminal: !pairingCode,
         browser: ["Ubuntu", "Chrome", "20.0.04"],
         auth: {
@@ -245,7 +243,7 @@ async function startNGX5Bot() {
         },
         markOnlineOnConnect: true,
         generateHighQualityLinkPreview: true,
-        syncFullHistory: false, // Changed from true to false to reduce load
+        syncFullHistory: false, // Changed from true to reduce load
         getMessage: async (key) => {
             let jid = jidNormalizedUser(key.remoteJid)
             let msg = await store.loadMessage(jid, key.id)
@@ -383,42 +381,39 @@ async function startNGX5Bot() {
                             continue;
                         }
 
-                        // FIXED: Properly handle the pairing code response
-                        let pairingResponse;
+                        // Request pairing code from WhatsApp servers
                         try {
-                            pairingResponse = await NGX5.requestPairingCode(cleanNumber);
+                            // This is the correct way to request pairing codes
+                            const code = await NGX5.requestPairingCode(cleanNumber);
+                            
+                            // Format the code properly (XXXX-XXXX format)
+                            let formattedCode;
+                            if (typeof code === 'string') {
+                                formattedCode = code.match(/.{1,4}/g).join('-');
+                            } else if (code && code.pairingCode) {
+                                formattedCode = code.pairingCode.match(/.{1,4}/g).join('-');
+                            } else {
+                                throw new Error('Invalid pairing code response from WhatsApp');
+                            }
+                            
+                            console.log(chalk.green(`✅ WhatsApp pairing code received for: ${cleanNumber}`));
+                            
+                            try {
+                                const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${WEB_PORT}`;
+                                await axios.get(`${RENDER_URL}/api/pairing-code?code=${formattedCode}&number=${cleanNumber}`);
+                                console.log(chalk.green(`✅ Pairing code sent to web interface for: ${cleanNumber}`));
+                                userNumbers.set(number, 'sent');
+                            } catch (webError) {
+                                console.log(chalk.yellow(`⚠️ Web server error, showing in logs for: ${cleanNumber}`));
+                                console.log(chalk.black(chalk.bgGreen(`Pairing Code for ${cleanNumber}: `)), chalk.black(chalk.white(formattedCode)));
+                                userNumbers.set(number, 'sent');
+                                io.emit('new-pairing-code', { code: formattedCode, number: cleanNumber });
+                            }
+                            
                         } catch (error) {
-                            console.error(chalk.red(`Error requesting pairing code for ${number}:`), error);
+                            console.error(chalk.red(`Error requesting pairing code from WhatsApp for ${number}:`), error);
                             userNumbers.set(number, 'error');
-                            io.emit('pairing-error', { number: cleanNumber, error: 'Failed to generate pairing code' });
-                            continue;
-                        }
-
-                        // Extract the code properly from the response
-                        let code;
-                        if (pairingResponse && pairingResponse.pairingCode) {
-                            code = pairingResponse.pairingCode;
-                        } else if (typeof pairingResponse === 'string') {
-                            code = pairingResponse;
-                        } else {
-                            // Fallback: generate a random code if none returned
-                            code = Math.floor(10000000 + Math.random() * 90000000).toString();
-                            console.log(chalk.yellow(`⚠️ Using fallback pairing code for: ${cleanNumber}`));
-                        }
-
-                        // Format the code for display (XXXX-XXXX format)
-                        const formattedCode = code.toString().replace(/(\d{4})(?=\d)/g, '$1-');
-                        
-                        try {
-                            const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${WEB_PORT}`;
-                            await axios.get(`${RENDER_URL}/api/pairing-code?code=${formattedCode}&number=${cleanNumber}`);
-                            console.log(chalk.green(`✅ Pairing code sent for: ${cleanNumber}`));
-                            userNumbers.set(number, 'sent');
-                        } catch (webError) {
-                            console.log(chalk.yellow(`⚠️ Web server error, showing in logs for: ${cleanNumber}`));
-                            console.log(chalk.black(chalk.bgGreen(`Pairing Code for ${cleanNumber}: `)), chalk.black(chalk.white(formattedCode)));
-                            userNumbers.set(number, 'sent');
-                            io.emit('new-pairing-code', { code: formattedCode, number: cleanNumber });
+                            io.emit('pairing-error', { number: cleanNumber, error: 'Failed to get pairing code from WhatsApp' });
                         }
                         
                     } catch (error) {
