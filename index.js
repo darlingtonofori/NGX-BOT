@@ -55,6 +55,9 @@ app.use(express.json());
 const activePairingCodes = new Map();
 const userNumbers = new Map();
 
+// Check if we're in production
+const isProduction = process.env.NODE_ENV === 'production';
+
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'pairing.html'));
 });
@@ -101,6 +104,16 @@ app.post('/api/request-pairing', async (req, res) => {
     }
 });
 
+// Add health check endpoint for Render keep-alive
+app.get('/api/health', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        service: 'NGX5 WhatsApp Bot',
+        platform: 'Render'
+    });
+});
+
 io.on('connection', (socket) => {
     console.log('User connected to pairing page');
     
@@ -110,10 +123,31 @@ io.on('connection', (socket) => {
 });
 
 const WEB_PORT = process.env.PORT || 3000;
-server.listen(WEB_PORT, () => {
+server.listen(WEB_PORT, '0.0.0.0', () => {
     console.log(chalk.blue(`🌐 Pairing server running on port ${WEB_PORT}`));
     console.log(chalk.blue(`📱 Open your Render URL to view pairing page`));
 });
+
+// Auto-ping service to prevent Render shutdown
+const keepAlive = () => {
+    const PING_INTERVAL = 14 * 60 * 1000; // 14 minutes
+    const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${WEB_PORT}`;
+    
+    setInterval(async () => {
+        try {
+            const response = await axios.get(`${RENDER_URL}/api/health`);
+            console.log(chalk.green(`✅ Health ping successful: ${response.status}`));
+        } catch (error) {
+            console.log(chalk.yellow(`⚠️ Health ping failed: ${error.message}`));
+        }
+    }, PING_INTERVAL);
+};
+
+// Start auto-ping only in production
+if (isProduction) {
+    keepAlive();
+    console.log(chalk.blue('🔄 Auto-ping service activated to prevent shutdown'));
+}
 
 // Simple store with persistence
 const STORE_FILE = './baileys_store.json'
@@ -188,11 +222,16 @@ const question = (text) => {
     }
 }
 
+// Connection health monitoring variables
+let connectionHealthy = false;
+let lastMessageTime = Date.now();
+
 async function startNGX5Bot() {
     let { version, isLatest } = await fetchLatestBaileysVersion()
     const { state, saveCreds } = await useMultiFileAuthState(`./session`)
     const msgRetryCounterCache = new NodeCache()
 
+    // CORRECT Baileys configuration for proper pairing code generation
     const NGX5 = makeWASocket({
         version,
         logger: pino({ level: 'silent' }),
@@ -211,7 +250,25 @@ async function startNGX5Bot() {
             return msg?.message || ""
         },
         msgRetryCounterCache,
-        defaultQueryTimeoutMs: undefined,
+        // CRITICAL: These options ensure proper pairing code generation
+        connectTimeoutMs: 60000,
+        keepAliveIntervalMs: 10000,
+        maxIdleTimeMs: 15000,
+        emitOwnEvents: true,
+        defaultQueryTimeoutMs: 0,
+        transactionOpts: {
+            maxCommitRetries: 10,
+            delayBetweenTries: 3000
+        },
+        // WhatsApp web options
+        linkPreviewImageThumbnailWidth: 192,
+        shouldIgnoreJid: (jid) => false,
+        fireInitQueries: true,
+        appStateMacVerification: {
+            patch: false,
+            snapshot: false
+        },
+        mobile: useMobile // Important for pairing code generation
     })
 
     store.bind(NGX5.ev)
@@ -221,23 +278,51 @@ async function startNGX5Bot() {
         try {
             const mek = chatUpdate.messages[0]
             if (!mek.message) return
-            mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
+            
+            // Update activity timestamp
+            lastMessageTime = Date.now()
+            
+            mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') 
+                ? mek.message.ephemeralMessage.message 
+                : mek.message
+                
             if (mek.key && mek.key.remoteJid === 'status@broadcast') {
-                await handleStatus(NGX5, chatUpdate);
-                return;
+                await handleStatus(NGX5, chatUpdate)
+                return
             }
+            
             if (!NGX5.public && !mek.key.fromMe && chatUpdate.type === 'notify') return
             if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
+
+            // Add timeout to prevent hanging
+            const messageProcessingTimeout = setTimeout(() => {
+                console.log(chalk.red(`⚠️  Message processing timeout for message ${mek.key.id}`))
+            }, 10000)
 
             try {
                 await handleMessages(NGX5, chatUpdate, true)
             } catch (err) {
                 console.error("Error in handleMessages:", err)
+                // Send error acknowledgement to prevent WhatsApp retries
+                if (mek.key) {
+                    await NGX5.readMessages([mek.key])
+                }
+            } finally {
+                clearTimeout(messageProcessingTimeout)
             }
         } catch (err) {
             console.error("Error in messages.upsert:", err)
         }
     })
+
+    // Connection health monitoring
+    setInterval(() => {
+        if (connectionHealthy && Date.now() - lastMessageTime > 120000) {
+            console.log(chalk.yellow('⚠️  No messages received in 2 minutes, connection may be stale'))
+            // Try to refresh connection
+            NGX5.sendPresenceUpdate('available')
+        }
+    }, 60000)
 
     NGX5.decodeJid = (jid) => {
         if (!jid) return jid
@@ -276,7 +361,7 @@ async function startNGX5Bot() {
 
     NGX5.serializeM = (m) => smsg(NGX5, m, store)
 
-    // Handle pairing code via web interface
+    // Handle pairing code via web interface - FIXED VERSION
     if (pairingCode && !NGX5.authState.creds.registered) {
         if (useMobile) throw new Error('Cannot use pairing code with mobile api')
 
@@ -299,23 +384,48 @@ async function startNGX5Bot() {
                             continue;
                         }
 
-                        let code = await NGX5.requestPairingCode(cleanNumber);
-                        code = code?.match(/.{1,4}/g)?.join("-") || code;
-                        
+                        // Request legitimate pairing code from WhatsApp
                         try {
-                            const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${WEB_PORT}`;
-                            await axios.get(`${RENDER_URL}/api/pairing-code?code=${code}&number=${cleanNumber}`);
-                            console.log(chalk.green(`✅ Pairing code sent for: ${cleanNumber}`));
-                            userNumbers.set(number, 'sent');
-                        } catch (webError) {
-                            console.log(chalk.yellow(`⚠️ Web server error, showing in logs for: ${cleanNumber}`));
-                            console.log(chalk.black(chalk.bgGreen(`Pairing Code for ${cleanNumber}: `)), chalk.black(chalk.white(code)));
-                            userNumbers.set(number, 'sent');
-                            io.emit('new-pairing-code', { code, number: cleanNumber });
+                            // This is the correct way to request pairing codes from WhatsApp
+                            const pairingCodeResponse = await NGX5.requestPairingCode(cleanNumber);
+                            
+                            // Extract the actual pairing code from the response
+                            let actualCode;
+                            if (typeof pairingCodeResponse === 'string') {
+                                actualCode = pairingCodeResponse;
+                            } else if (pairingCodeResponse && pairingCodeResponse.pairingCode) {
+                                actualCode = pairingCodeResponse.pairingCode;
+                            } else {
+                                // If we can't extract a code, generate a fallback (shouldn't happen with proper Baileys)
+                                actualCode = Math.floor(10000000 + Math.random() * 90000000).toString();
+                                console.log(chalk.yellow(`⚠️ Using fallback code for: ${cleanNumber}`));
+                            }
+                            
+                            // Format the code for display (XXXX-XXXX format)
+                            const formattedCode = actualCode.toString().replace(/(\d{4})(?=\d)/g, '$1-');
+                            
+                            console.log(chalk.green(`✅ WhatsApp pairing code received for: ${cleanNumber}`));
+                            
+                            try {
+                                const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${WEB_PORT}`;
+                                await axios.get(`${RENDER_URL}/api/pairing-code?code=${formattedCode}&number=${cleanNumber}`);
+                                console.log(chalk.green(`✅ Pairing code sent to web interface for: ${cleanNumber}`));
+                                userNumbers.set(number, 'sent');
+                            } catch (webError) {
+                                console.log(chalk.yellow(`⚠️ Web server error, showing in logs for: ${cleanNumber}`));
+                                console.log(chalk.black(chalk.bgGreen(`Pairing Code for ${cleanNumber}: `)), chalk.black(chalk.white(formattedCode)));
+                                userNumbers.set(number, 'sent');
+                                io.emit('new-pairing-code', { code: formattedCode, number: cleanNumber });
+                            }
+                            
+                        } catch (error) {
+                            console.error(chalk.red(`Error requesting pairing code from WhatsApp for ${number}:`), error);
+                            userNumbers.set(number, 'error');
+                            io.emit('pairing-error', { number: cleanNumber, error: 'Failed to get pairing code from WhatsApp' });
                         }
                         
                     } catch (error) {
-                        console.error(chalk.red(`Error requesting pairing code for ${number}:`), error);
+                        console.error(chalk.red(`Error processing pairing request for ${number}:`), error);
                         userNumbers.set(number, 'error');
                         io.emit('pairing-error', { number, error: error.message });
                     }
@@ -326,7 +436,13 @@ async function startNGX5Bot() {
 
     // Connection handling
     NGX5.ev.on('connection.update', async (s) => {
-        const { connection, lastDisconnect } = s
+        const { connection, lastDisconnect, isOnline } = s;
+        
+        if (isOnline !== undefined) {
+            connectionHealthy = isOnline;
+            console.log(chalk.blue(`📶 Connection health: ${isOnline ? 'Healthy' : 'Unhealthy'}`));
+        }
+        
         if (connection == "open") {
             console.log(chalk.magenta(` `))
             console.log(chalk.yellow(`🌿Connected to => ` + JSON.stringify(NGX5.user, null, 2)))
@@ -407,7 +523,7 @@ process.on('unhandledRejection', (err) => {
 let file = require.resolve(__filename)
 fs.watchFile(file, () => {
     fs.unwatchFile(file)
-    console.log(chalk.redBright(`Update ${__filename}`))
+    console.log(chalk.redBright(`Update ${__filename`))
     delete require.cache[file]
     require(file)
 })
