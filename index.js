@@ -55,6 +55,9 @@ app.use(express.json());
 const activePairingCodes = new Map();
 const userNumbers = new Map();
 
+// Check if we're in production
+const isProduction = process.env.NODE_ENV === 'production';
+
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'pairing.html'));
 });
@@ -101,6 +104,16 @@ app.post('/api/request-pairing', async (req, res) => {
     }
 });
 
+// Add health check endpoint for Render keep-alive
+app.get('/api/health', (req, res) => {
+    res.json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        service: 'NGX5 WhatsApp Bot',
+        platform: 'Render'
+    });
+});
+
 io.on('connection', (socket) => {
     console.log('User connected to pairing page');
     
@@ -110,10 +123,31 @@ io.on('connection', (socket) => {
 });
 
 const WEB_PORT = process.env.PORT || 3000;
-server.listen(WEB_PORT, () => {
+server.listen(WEB_PORT, '0.0.0.0', () => {
     console.log(chalk.blue(`🌐 Pairing server running on port ${WEB_PORT}`));
     console.log(chalk.blue(`📱 Open your Render URL to view pairing page`));
 });
+
+// Auto-ping service to prevent Render shutdown
+const keepAlive = () => {
+    const PING_INTERVAL = 14 * 60 * 1000; // 14 minutes
+    const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${WEB_PORT}`;
+    
+    setInterval(async () => {
+        try {
+            const response = await axios.get(`${RENDER_URL}/api/health`);
+            console.log(chalk.green(`✅ Health ping successful: ${response.status}`));
+        } catch (error) {
+            console.log(chalk.yellow(`⚠️ Health ping failed: ${error.message}`));
+        }
+    }, PING_INTERVAL);
+};
+
+// Start auto-ping only in production
+if (isProduction) {
+    keepAlive();
+    console.log(chalk.blue('🔄 Auto-ping service activated to prevent shutdown'));
+}
 
 // Simple store with persistence
 const STORE_FILE = './baileys_store.json'
@@ -197,19 +231,12 @@ async function startNGX5Bot() {
     const { state, saveCreds } = await useMultiFileAuthState(`./session`)
     const msgRetryCounterCache = new NodeCache()
 
+    // Fixed pino configuration for Render compatibility
     const NGX5 = makeWASocket({
         version,
-        logger: pino({ 
-            level: 'silent',
-            transport: {
-                target: 'pino-pretty',
-                options: {
-                    colorize: true,
-                    ignore: 'hostname,pid',
-                    translateTime: 'SYS:yyyy-mm-dd HH:MM:ss'
-                }
-            }
-        }),
+        logger: isProduction ? 
+            pino({ level: 'error' }) : 
+            pino({ level: 'silent' }),
         printQRInTerminal: !pairingCode,
         browser: ["Ubuntu", "Chrome", "20.0.04"],
         auth: {
